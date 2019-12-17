@@ -234,7 +234,7 @@ function offboardUser {
     . \\Path\to\offboardFunctions.ps1
     terminateuser $offboardUser $offboardManager
 
-    & 'P:\Global\IT\POSH\Play Audio\bye.ps1'
+    & '\\Path\to\bye.ps1'
 }
 
 ########################################################################################################################################################################################################################

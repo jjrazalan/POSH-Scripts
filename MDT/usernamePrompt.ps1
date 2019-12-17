@@ -9,13 +9,14 @@ $username = [Microsoft.VisualBasic.Interaction]::InputBox("Enter a username to a
 #Create schedule task for setup script
 if ($username) {
     #add user to local admin group
-    Add-LocalGroupMember -Group "Administrators" -Member "engsys.net\$username"
+    Add-LocalGroupMember -Group "Administrators" -Member "Domain\$username"
+    #Create schedule task for user's next sign on
     $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-noexit -ExecutionPolicy Bypass -File \\engsys.net\Public\Global\IT\POSH\MDT\firstTimeSetup.ps1"
+    $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-noexit -ExecutionPolicy Bypass -File \\Path\to\firstTimeSetup.ps1"
     $principal = New-ScheduledTaskPrincipal -UserId SYSTEM -LogonType ServiceAccount -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries
     $definition = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings
-    Register-ScheduledTask -TaskName "FirstTimeSetup" -InputObject $definition -User "ENGSYS\$username"
+    Register-ScheduledTask -TaskName "FirstTimeSetup" -InputObject $definition -User "Domain\$username"
     Write-Output "Scheduled Task added."
 }
 if ($null -eq $username){}
