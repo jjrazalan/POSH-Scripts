@@ -1,11 +1,11 @@
 ﻿<# 
-.SYNOPSIS
-GUI for ADUser creation, modification, and remote terminal page.
+.SYNOPSIS 
+GUI for ADUser creation, modification, and offboarding.
 
 .DESCRIPTION
 Create ADUsers tab prompts for necessary fields to create users and then will call the createUser functions to set variables and call the actual create users function for AD.
 Update Users prompts for username or has filters to search for by surname and first name. It then will pull data from AD where you can update the values. 
-Allows admins to easily enter a computer name and access it's remote terminal.
+Delete Users prompts just the same as update users, but now it will deactivate the account and unassign necessary licenses. 
 
 .AUTHOR
     Josh Razalan
@@ -13,11 +13,19 @@ Allows admins to easily enter a computer name and access it's remote terminal.
 function createUser {
     Import-Module ActiveDirectory
 
-    #ensure username is consistent
+    #Connect to Microsoft Online
+    Get-MsolDomain -ErrorAction SilentlyContinue
+    if ($?) {
+        
+    }
+    else {
+        Connect-MsolService
+    }
+
     $Username = $Usernamef.text.tolower()
     $Desc = ''
 
-    #Read user data from each field form and assign the data to a variable as below
+    #Read user data from each field form and assign the data to a variable below
     $Firstname = $Firstnamef.text
     $MI = $MIf.text
     $Lastname = $Lastnamef.text
@@ -27,48 +35,90 @@ function createUser {
     $JobTitle = $Jobtitlef.text
     $O365 = $O365f.Checked
     $License = $Licensef.SelectedItem
-    
+
+    #Read user data from each field form and assign the data to a variable for Database
+    $PG = $PGf.text
+    $Print = $Printf.Checked
+    $Admin = $Adminf.Checked
+    $ESISearch = $ESISearchf.Checked
+    $Exempt = $Exemptf.Checked
+    $Classification = $Classificationf.Checked
+    $Corporate = $Corporatef.Checked
+
     #Set desciption by user intials
     $tempDesc = $Firstname + ' ' + $MI + ' ' + $Lastname	
-    $tempDesc.split(' ') | ForEach-Object {$Desc += $_[0]}
+    $tempDesc.split(' ') | ForEach-Object { $Desc += $_[0] }
     $Desc = $Desc.ToUpper()  
 
-    #Set correct syntax for Display Names.
+    #Set correct syntax for Display Names and database info.
     if (!$MI) {
         $Name = $Firstname + ' ' + $Lastname
+        $tempinitals = $Firstname + ' X ' + $Lastname
+        $tempinitals.split(' ') | ForEach-Object { $Initials += $_[0] }
     }
     else { 
         $Name = $Firstname + ' ' + $MI + '. ' + $Lastname
-    }
-    
-    #Connect to Microsoft Online
-    Get-MsolDomain -ErrorAction SilentlyContinue
-    if ($?) {
-    
-    }
-    else {
-        Connect-MsolService
-    }
-    
-    #Check if user exists then call methods to create user in AD
-    if (-Not (Get-ADUser -Filter 'SamAccountName -eq $Username')) {
-        try{
-            . Functions.ps1
-            createUser $Firstname $MI $Lastname $Username $Password $Office $Department $JobTitle $Desc $Name 
-            . AddO365Users.ps1
-            CreateO365User $Firstname $Lastname $Username $Password $Name $O365 $License $Office $Department $JobTitle
-            $Label10.text = "$Username sucessfully created"
-        }
-        catch{
-            $Label10.text = "$Username creation unsucessful"
-        }
-    }
-    else {
-        [System.Windows.Forms.MessageBox]::Show("$Username already exists", 'Error', 'Ok', 'Error')
-        $Label10.text = "$Username already exists"
+        $tempinitals = $Firstname + ' ' + $MI + ' ' + $Lastname
+        $tempinitals.split(' ') | ForEach-Object { $Initials += $_[0] }
     }
 
-    #Clears out form boxes for multiple entries
+
+    #Check if user exists then call methods to create user in AD in domains
+    if (-Not (Get-ADUser -Filter 'SamAccountName -eq $Username' -Server "")) {
+        try {
+            . \\Path\to\domainFunctions.ps1
+            createUserdomain $Firstname $MI $Lastname $Username $Password $Office $Department $JobTitle $Desc $Name 
+            $Label10.text = "$Username sucessfully created in domain"
+        }
+        catch {
+            $Label10.text = "$Username creation unsucessful in domain"
+        }
+        #Call method for creating and assign user licenses in O365
+        try {
+            . \\Path\to\AddO365Users.ps1
+            CreateO365User $Firstname $Lastname $Username $Password $Name $O365 $License $Office $Department $JobTitle
+            $Label10.text = "$Username sucessfully created in domain and O365"
+        }
+        catch {
+            $Label10.text = "$Username creation unsucessful in O365"
+        }
+    
+    }
+    else {
+        [System.Windows.Forms.MessageBox]::Show("$Username already exist in domain", 'Error', 'Ok', 'Error')
+        $Label10.text = "$Username already in domain"
+    }
+    
+    if (-Not (Get-ADUser -Filter 'SamAccountName -eq $Username' -Server "other domain")) {
+        try {
+            . \\Path\to\otherdomainFunctions.ps1
+            createUserotherdomain $Firstname $MI $Lastname $Username $Password $Office $Department $JobTitle $Desc $Name 
+            $Label11.text = "$Username sucessfully created in other domain"
+        }
+        catch {
+            $Label11.text = "$Username creation unsucessful in other domain"
+        }
+    }
+
+    else {
+        [System.Windows.Forms.MessageBox]::Show("$Username already exist in other domain", 'Error', 'Ok', 'Error')
+        $Label11.text = "$Username already in other domain"
+    }
+
+    #Add user to database
+    try {
+        . \\Path\to\SQLFunctions.ps1
+        CreateUserSQL $Desc $Lastname $Firstname $MI $Office $PG $Print $Admin $ESISearch $Exempt $Classification $Corporate $Username
+    }
+    catch { }
+
+    #Email HR with onboarding document 
+    try {
+        . \\Path\to\OnboardingDoc.ps1
+        CreateOnboardingDoc $Username $Password $Initials
+    }
+    catch { }
+
     $Firstnamef.text = ''
     $MIf.text = ''
     $Lastnamef.text = ''
@@ -78,6 +128,14 @@ function createUser {
     $Departmentf.text = ''
     $JobTitlef.text = ''
     $O365f.Checked = $false
+    $PGf.SelectedItem = $null
+    $Printf.Checked = $false
+    $Adminf.Checked = $false
+    $ESISearchf.Checked = $false
+    $Exemptf.Checked = $false
+    $Classificationf.Checked = $false
+    $Corporatef.Checked = $false
+
 }
 
 function searchUser {
@@ -87,7 +145,6 @@ function searchUser {
     $Search = $Searchf.text
     $Filter = $Filterf.text
 
-    #Switch determines what type of filter it will use
     switch ($Filter) {
         "name" {
             $Search = $Search + "*"
@@ -105,7 +162,6 @@ function searchUser {
     if ($User -eq "") {
         $namel.text = "User not found."
     }
-    #Fill in form textboxes with user information
     else {
         $namel.text = $User.Name
         $Phonel.text = "Phone:"
@@ -171,6 +227,17 @@ function updateUser {
     } 
 }
 
+function offboardUser {
+    $offboardUser = $OUsernamef.text
+    $offboardManager = $OManagerf.text
+    
+    . \\Path\to\offboardFunctions.ps1
+    terminateuser $offboardUser $offboardManager
+
+    & 'P:\Global\IT\POSH\Play Audio\bye.ps1'
+}
+
+########################################################################################################################################################################################################################
 function generateForm {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -179,6 +246,7 @@ function generateForm {
     $tabControl = New-Object System.Windows.Forms.TabControl
     $CreateUserPage = New-Object System.Windows.Forms.TabPage
     $GetUserPage = New-Object System.Windows.Forms.TabPage
+    $OffboardPage = New-Object System.Windows.Forms.TabPage
     $RemoteTerminalPage = New-Object System.Windows.Forms.TabPage
     $tabControl.DataBindings.DefaultDataSourceUpdateMode = 0
     $tabControl.Location = New-Object System.Drawing.Point(5, 0)
@@ -187,16 +255,15 @@ function generateForm {
     #begin GUI{ 
 
     $CreateADUsers = New-Object system.Windows.Forms.Form
-    $CreateADUsers.ClientSize = '785,540'
+    $CreateADUsers.ClientSize = '785, 700'
     $CreateADUsers.text = "IT AD tools"
     $CreateADUsers.TopMost = $false
 
-    #Uncomment and add file path for icon
-    #$Icon = New-Object system.drawing.icon (".ico")
-    #$CreateADUsers.Icon = $Icon
+    $Icon = New-Object system.drawing.icon ("P:\Global\IT\POSH\CreateUsers\favicon.ico")
+    $CreateADUsers.Icon = $Icon
 
     #Create tabs
-    $tabControl.Size = '775,535'
+    $tabControl.Size = '780, 695'
     $tabControl.Font = 'Microsoft Sans Serif,12'
     $CreateADUsers.Controls.Add($tabControl)
 
@@ -290,7 +357,7 @@ function generateForm {
     $Passwordf.width = 185
     $Passwordf.height = 20
     $Passwordf.location = New-Object System.Drawing.Point(500, 150)
-    $Passwordf.Font = 'Microsoft Sans Serif,14'
+    $Passwordf.Font = 'Microsoft Sans Serif,14' 
 
     $Label7 = New-Object system.Windows.Forms.Label
     $Label7.text = "Office:"
@@ -304,9 +371,7 @@ function generateForm {
     $Officef.width = 185
     $Officef.height = 20
     $Officef.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList;
-    <#$Officef.AutoCompleteSource = 'ListItems'
-    $Officef.AutoCompleteMode = 'Append'#>
-    $Officef.Items.AddRange(@('Colorado'))
+    $Officef.Items.AddRange(@('Colorado', 'Dallas', 'Fort Myers', 'Miami', 'Tampa', 'Georgia', 'Houston', 'Illinois', 'Iowa', 'Michigan', 'Minnesota', 'Missouri', 'North Carolina', 'Nebraska', 'Seattle', 'SoCal'))
     $Officef.location = New-Object System.Drawing.Point(146, 225)
     $Officef.Font = 'Microsoft Sans Serif,14'
 
@@ -340,19 +405,12 @@ function generateForm {
     $Jobtitlef.location = New-Object System.Drawing.Point(146, 300)
     $Jobtitlef.Font = 'Microsoft Sans Serif,14'
 
-    $Submit = New-Object system.Windows.Forms.Button
-    $Submit.text = "Submit"
-    $Submit.width = 125
-    $Submit.height = 55
-    $Submit.location = New-Object System.Drawing.Point(6, 375)
-    $Submit.Font = 'Microsoft Sans Serif,14'
-
     $O365f = New-Object system.Windows.Forms.CheckBox
     $O365f.text = "Assign O365 License"
     $O365f.AutoSize = $false
     $O365f.width = 220
     $O365f.height = 28
-    $O365f.location = New-Object System.Drawing.Point(340, 303)
+    $O365f.location = New-Object System.Drawing.Point(345, 303)
     $O365f.Font = 'Microsoft Sans Serif,14'
 
     $Licensef = New-Object system.Windows.Forms.ComboBox
@@ -365,18 +423,86 @@ function generateForm {
     $Licensef.location = New-Object System.Drawing.Point(581, 300)
     $Licensef.Font = 'Microsoft Sans Serif,14'
 
+    $PGl = New-Object system.Windows.Forms.Label
+    $PGl.text = "Practice Group:"
+    $PGl.AutoSize = $true
+    $PGl.width = 25
+    $PGl.height = 10
+    $PGl.location = New-Object System.Drawing.Point(6, 375)
+    $PGl.Font = 'Microsoft Sans Serif,14'
+    
+    $PGf = New-Object system.Windows.Forms.ComboBox
+    $PGf.width = 185
+    $PGf.height = 20
+    $PGf.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList;
+    $PGf.location = New-Object System.Drawing.Point(146, 375)
+    $PGf.Font = 'Microsoft Sans Serif,14'
+    $PGf.Items.AddRange(@('None', 'Auto & Marine', 'Aviation', 'Bio & Safety', 'Civil, Structural, & Enviormental', 'Materials', 'Fire & Explosion', 'Mechanical', 'Laboratory & Industrial Services', 
+            'Visualization', 'Electrical', 'Rail', 'Admin', 'Technical'))
+
+    $Printf = New-Object system.Windows.Forms.CheckBox
+    $Printf.text = "Print"
+    $Printf.AutoSize = $false
+    $Printf.height = 28
+    $Printf.location = New-Object System.Drawing.Point(345, 378)
+    $Printf.Font = 'Microsoft Sans Serif,14'
+
+    $Adminf = New-Object system.Windows.Forms.CheckBox
+    $Adminf.text = "Admin"
+    $Adminf.AutoSize = $false
+    $Adminf.height = 28
+    $Adminf.location = New-Object System.Drawing.Point(450, 378)
+    $Adminf.Font = 'Microsoft Sans Serif,14'
+
+    $ESISearchf = New-Object system.Windows.Forms.CheckBox
+    $ESISearchf.text = "Search"
+    $ESISearchf.AutoSize = $false
+    $ESISearchf.height = 28
+    $ESISearchf.location = New-Object System.Drawing.Point(555, 378)
+    $ESISearchf.Font = 'Microsoft Sans Serif,14'
+
+    $Exemptf = New-Object system.Windows.Forms.CheckBox
+    $Exemptf.text = "Exempt"
+    $Exemptf.AutoSize = $false
+    $Exemptf.height = 28
+    $Exemptf.location = New-Object System.Drawing.Point(660, 378)
+    $Exemptf.Font = 'Microsoft Sans Serif,14'
+
+    $Classificationf = New-Object system.Windows.Forms.CheckBox
+    $Classificationf.text = "Consultant"
+    $Classificationf.AutoSize = $false
+    $Classificationf.width = 135
+    $Classificationf.height = 28
+    $Classificationf.location = New-Object System.Drawing.Point(11, 453)
+    $Classificationf.Font = 'Microsoft Sans Serif,14'
+
+    $Corporatef = New-Object system.Windows.Forms.CheckBox
+    $Corporatef.text = "Corporate"
+    $Corporatef.AutoSize = $false
+    $Corporatef.width = 135
+    $Corporatef.height = 28
+    $Corporatef.location = New-Object System.Drawing.Point(151, 453)
+    $Corporatef.Font = 'Microsoft Sans Serif,14'
+
+    $Submit = New-Object system.Windows.Forms.Button
+    $Submit.text = "Submit"
+    $Submit.width = 125
+    $Submit.height = 55
+    $Submit.location = New-Object System.Drawing.Point(6, 525)
+    $Submit.Font = 'Microsoft Sans Serif,14'
+
     $Open = New-Object system.Windows.Forms.Button
     $Open.text = "Open CSV"
     $Open.width = 125
     $Open.height = 55
-    $Open.location = New-Object System.Drawing.Point(150, 375)
+    $Open.location = New-Object System.Drawing.Point(150, 525) 
     $Open.Font = 'Microsoft Sans Serif,14'
 
     $Create = New-Object system.Windows.Forms.Button
     $Create.text = "Create with CSV"
     $Create.width = 125
     $Create.height = 55
-    $Create.location = New-Object System.Drawing.Point(300, 375)
+    $Create.location = New-Object System.Drawing.Point(300, 525)
     $Create.Font = 'Microsoft Sans Serif,14'
 
     $Label10 = New-Object system.Windows.Forms.Label
@@ -384,7 +510,7 @@ function generateForm {
     $Label10.AutoSize = $true
     $Label10.width = 25
     $Label10.height = 10
-    $Label10.location = New-Object System.Drawing.Point(6, 450)
+    $Label10.location = New-Object System.Drawing.Point(6, 600)
     $Label10.Font = 'Microsoft Sans Serif,12'
 
     $Label11 = New-Object system.Windows.Forms.Label
@@ -392,13 +518,15 @@ function generateForm {
     $Label11.AutoSize = $true
     $Label11.width = 25
     $Label11.height = 10
-    $Label11.location = New-Object System.Drawing.Point(6, 475)
+    $Label11.location = New-Object System.Drawing.Point(6, 625)
     $Label11.Font = 'Microsoft Sans Serif,12'
 
-    $CreateUserPage.controls.AddRange(@($Label1, $Label2, $Firstnamef, $Label3, $Label4, $MIf, $Lastnamef, $Label5, $Usernamef,
-            $Label6, $Passwordf, $Label7, $Officef, $Label8, $Departmentf, $Label9, $Jobtitlef, $O365f, $Licensef, $Submit, $Open, $Create, $Label10, $Label11))
+    $CreateUserPage.controls.AddRange(@($Label1, $Label2, $Firstnamef, $Label3, $Label4, $MIf, $Lastnamef, $Label5, $Usernamef, $Label6, $Passwordf, $Label7, $Officef, $Label8, 
+            $Departmentf, $Label9, $Jobtitlef, $O365f, $Licensef, $PGl, $PGf, $Printf, $Adminf, $ESISearchf, $Exemptf, $Classificationf, $Corporatef, $Submit, $Open, $Create, $Label10, $Label11))
 
 
+
+    ##############################################################################################################################################################################################################
     #Get AD User page
     $GetUserPage.Text = "Get AD Users"
     $tabControl.Controls.Add($GetUserPage)
@@ -490,7 +618,7 @@ function generateForm {
     $Officef1.Visible = $false
     $Officef1.AutoCompleteSource = 'ListItems'
     $Officef1.AutoCompleteMode = 'Append'
-    $Officef1.Items.AddRange(@('Colorado'))
+    $Officef1.Items.AddRange(@('Colorado', 'Dallas', 'Fort Myers', 'Miami', 'Georgia', 'Houston', 'Illinois', 'Iowa', 'Michigan', 'Minnesota', 'Missouri', 'North Carolina', 'Nebraska', 'Seattle', 'SoCal'))
     $Officef1.location = New-Object System.Drawing.Point(146, 225)
     $Officef1.Font = 'Microsoft Sans Serif,14'
 
@@ -546,17 +674,74 @@ function generateForm {
 
     $GetUserPage.controls.AddRange(@($Label1, $filterf, $Searchf, $Search, $namel, $Phonel, $Phonef,
             $Jobtitlel, $Jobtitlef1, $Officel, $Officef1, $Departmentl, $Departmentf1, $Descl, $Descf, $DNl, $Update))
+    
+    
+    
+    ##############################################################################################################################################################################################################
+    #Offboard Users
+    $OffboardPage.Text = "Offboarding"
+    $tabControl.Controls.Add($OffboardPage)
 
+    $Offboardl = New-Object system.Windows.Forms.Label
+    $Offboardl.text = "Offboard User:"
+    $Offboardl.AutoSize = $true
+    $Offboardl.width = 30
+    $Offboardl.height = 10
+    $Offboardl.location = New-Object System.Drawing.Point(6, 5)
+    $Offboardl.Font = 'Microsoft Sans Serif,18,style=Bold'
+
+    $OUsernamel = New-Object system.Windows.Forms.Label
+    $OUsernamel.text = "Username:"
+    $OUsernamel.AutoSize = $true
+    $OUsernamel.width = 30
+    $OUsernamel.height = 10
+    $OUsernamel.location = New-Object System.Drawing.Point(6, 75)
+    $OUsernamel.Font = 'Microsoft Sans Serif,14'
+
+    $OUsernamef = New-Object system.Windows.Forms.TextBox
+    $OUsernamef.multiline = $false
+    $OUsernamef.width = 185
+    $OUsernamef.height = 20
+    $OUsernamef.location = New-Object System.Drawing.Point(200, 75)
+    $OUsernamef.Font = 'Microsoft Sans Serif,14'
+
+    $OManagerl = New-Object system.Windows.Forms.Label
+    $OManagerl.text = "Manager Username:"
+    $OManagerl.AutoSize = $true
+    $OManagerl.width = 25
+    $OManagerl.height = 10
+    $OManagerl.location = New-Object System.Drawing.Point(6, 150)
+    $OManagerl.Font = 'Microsoft Sans Serif,14'
+
+    $OManagerf = New-Object system.Windows.Forms.TextBox
+    $OManagerf.multiline = $false
+    $OManagerf.Visible = $true
+    $OManagerf.width = 185
+    $OManagerf.height = 20
+    $OManagerf.location = New-Object System.Drawing.Point(200, 150)
+    $OManagerf.Font = 'Microsoft Sans Serif,14'
+
+    $Terminate = New-Object system.Windows.Forms.Button
+    $Terminate.text = "TERMINATE USER"
+    $Terminate.width = 757
+    $Terminate.height = 435
+    $Terminate.BackColor = 'Red'
+    $Terminate.ForeColor = 'White'
+    $Terminate.location = New-Object System.Drawing.Point(6, 225) 
+    $Terminate.Font = 'Microsoft Sans Serif,82'
+
+    $OffboardPage.Controls.AddRange(@($Offboardl, $OUsernamel, $OUsernamef, $OManagerl, $OManagerf, $Terminate))
+    ##############################################################################################################################################################################################################
     #Connect to remote computer terminal page
     $RemoteTerminalPage.Text = "Remote Terminal"
     $tabControl.Controls.add($RemoteTerminalPage)
-    $RemoteTerminalPage.Add_Click({
-        & "P:\Global\IT\POSH\CreateUsers\Remote Computer.lnk"
-    })
+    $RemoteTerminalPage.Add_Click( {
+            & "P:\Global\IT\POSH\CreateUsers\Remote Computer.lnk"
+        })
 
     #region gui events {
     #Submit form to create user
-    $Submit.Add_Click( {createUser})
+    $Submit.Add_Click( { createUser })
 
     $Jobtitlef1.Add_KeyDown( {
             if ($_.KeyCode -eq "Enter") {
@@ -564,9 +749,9 @@ function generateForm {
             }
         })
 
-    $Open.Add_Click( {Invoke-Item "ADUsers.csv"})
+    $Open.Add_Click( { Invoke-Item "P:\Global\IT\POSH\CreateUsers\ADUsers.csv" })
 
-    $Create.Add_Click( {& AddADUsers.ps1})
+    $Create.Add_Click( { & P:\Global\IT\POSH\CreateUsers\AddADUsers.ps1 })
 
     $O365f.Add_Click( {
             if ($O365f.Checked) {
@@ -577,7 +762,7 @@ function generateForm {
             }
         })
 
-    $Search.Add_Click( {searchUser})
+    $Search.Add_Click( { searchUser })
 
     $Searchf.Add_KeyDown( {
             if ($_.KeyCode -eq "Enter") {
@@ -585,7 +770,9 @@ function generateForm {
             }
         })
 
-    $Update.Add_Click( {updateUser})
+    $Update.Add_Click( { updateUser })
+
+    $Terminate.Add_Click( { offboardUser })
 
     [void]$CreateADUsers.ShowDialog()
 

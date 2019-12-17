@@ -8,7 +8,13 @@
 Import-Module ActiveDirectory
   
 #Store the data from ADUsers.csv in the $ADUsers variable
-$ADUsers = Import-csv "P:\Global\IT\POSH\CreateUsers\ADUsers.csv"
+$ADUsers = Import-csv "\\Path\to\ADUsers.csv"
+#Connect to Exchange Online
+$UserCredential = Get-Credential -Message "Enter credentials for Exchange Online (App Password)."
+$Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/ -Credential $UserCredential -Authentication Basic -AllowRedirection
+Import-PSSession $Session -DisableNameChecking
+Add-MailboxPermission -identity "$username@domain.com" -user "Organization Management" -AccessRights FullAccess -inheritancetype all -automapping $false
+Remove-PSSession $Session
 
 #Loop through each row containing user details in the CSV file 
 foreach ($User in $ADUsers) {
@@ -28,7 +34,7 @@ foreach ($User in $ADUsers) {
     
     #Set desciption by user intials
     $tempDesc = $Firstname + ' ' + $MI + ' ' + $Lastname	
-    $tempDesc.split(' ') | ForEach-Object {$Desc += $_[0]}
+    $tempDesc.split(' ') | ForEach-Object { $Desc += $_[0] }
     $Desc = $Desc.ToUpper()
 
     #Set correct syntax for Display Names.
@@ -88,34 +94,34 @@ foreach ($User in $ADUsers) {
     }
 
 
-    #Check if user exists then call methods to create user in AD in ENGSYS.NET and esi.local
-    if (-Not (Get-ADUser -Filter 'SamAccountName -eq $Username' -Server "IL-DC01.ENGSYS.NET")) {
+    #Check if user exists then call methods to create user in AD in the various servers
+    if (-Not (Get-ADUser -Filter 'SamAccountName -eq $Username' -Server "")) {
         try {
-            . P:\Global\IT\POSH\CreateUsers\engsysFunctions.ps1
-            createUserEngsys $Firstname $MI $Lastname $Username $Password $Office $Department $JobTitle $Desc $Name 
-            . P:\Global\IT\POSH\CreateUsers\AddO365Users.ps1
+            . \\Path\to\domainFunctions.ps1
+            createUserdomain $Firstname $MI $Lastname $Username $Password $Office $Department $JobTitle $Desc $Name 
+            . \\Path\to\AddO365Users.ps1
             CreateO365User $Firstname $Lastname $Username $Password $Name $O365 $License
-            Write-Host "$Username sucessfully created in engsys.net"
+            Write-Host "$Username sucessfully created in domain"
         }
         catch {
-            Write-Host "$Username creation unsucessful in engsys.net"
+            Write-Host "$Username creation unsucessful in domain"
         }
     }
     else {
-        Write-Host "$Username already exist in Engsys"
+        Write-Host "$Username already exist in domain"
     }
-    
-    if (-Not (Get-ADUser -Filter 'SamAccountName -eq $Username' -Server "IL-HADC.esi.local")) {
+
+    if (-Not (Get-ADUser -Filter 'SamAccountName -eq $Username' -Server "other domain")) {
         try {
-            . P:\Global\IT\POSH\CreateUsers\esilocalFunctions.ps1
-            createUserEsilocal $Firstname $MI $Lastname $Username $Password $Office $Department $JobTitle $Desc $Name
-            Write-Host "$Username sucessfully created in esi.local"
+            . \\Path\to\otherdomainFunctions.ps1
+            createUserotherdomain $Firstname $MI $Lastname $Username $Password $Office $Department $JobTitle $Desc $Name
+            Write-Host "$Username sucessfully created in other domain"
         }
         catch {
-            Write-Host "$Username creation unsucessful in esi.local"
+            Write-Host "$Username creation unsucessful in other domain"
         }
     }
     else {
-        Write-Host"$Username already exist in Esi.local"
+        Write-Host  "$Username already exist in other domain"
     }
 }

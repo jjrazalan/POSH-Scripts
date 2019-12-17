@@ -1,0 +1,1 @@
+schtasks /create /s "Computer Name" /sc Daily /st 02:00 /tn "NewDBUpdate%1" /tr "powershell.exe -ExecutionPolicy Bypass -File \\Path\to\NewDB%1.ps1"

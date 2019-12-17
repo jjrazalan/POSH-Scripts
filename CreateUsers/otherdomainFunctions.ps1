@@ -1,25 +1,36 @@
-﻿function setOffice {
+﻿<# 
+.SYNOPSIS 
+Function to create user in other domain
+
+.DESCRIPTION
+Callable function with required parameters to create and assign a user licenses in the other domain. Includes setting the correct office information.
+
+.AUTHOR
+    Josh Razalan
+#>
+#Function to set various office information in other domain
+function setOffice {
     param($Office)
     $User = "" | Select-Object -Property OU, Company, StreetAddress, City, State, PostalCode, HomePhone, Fax, Group1, Group2
     switch ($Office) {
         "Colorado" {
-            $User.OU = "OU=Domain Users,OU=Colorado,DC=,DC="
+            $User.OU = "OU="
             $User.Company = ""
             $User.StreetAddress = ""
-            $User.City = "Colorado"
+            $User.City = ""
             $User.State = "Colorado"
             $User.PostalCode = ""
-            $User.HomePhone = ""
-            $User.Fax = ""
-            $User.Group1 = "CN=Colorado Users,OU=Security Groups,OU=Colorado,DC=,DC="
-            $User.Group2 = "CN=Colorado Projects,OU=Security Groups,OU=Colorado,DC=,DC="
+            $User.HomePhone = "(000) 000-0000"
+            $User.Fax = "(000) 000-0000"
+            $User.Group1 = ""
+            $User.Group2 = ""
             return $User
 
         }
     }
 }
-#Function to create users
-function createUser([String]$Firstname, 
+#Function to create users in esi.local
+function createUserEsilocal([String]$Firstname, 
     [String]$MI,
     [String]$Lastname, 
     [String]$Username, 
@@ -34,34 +45,33 @@ function createUser([String]$Firstname,
     $User = setOffice $Office
 
     #Set user initials with X if description exists already
-    if (Get-ADUser -Filter 'Description -like $Desc') {
+    if (Get-ADUser -Filter 'Description -like $Desc' -Server "IL-HADC.esi.local") {
         Write-Host "$Desc already exists defaulting to X."
         $Desc = ''
         $tempDesc = $Firstname + ' ' + 'X' + ' ' + $Lastname	
-        $tempDesc.split(' ') | ForEach-Object {$Desc += $_[0]}
+        $tempDesc.split(' ') | ForEach-Object { $Desc += $_[0] }
         $Desc = $Desc.ToUpper() 
-        #Set user initials with Z if description exists already
-        if (Get-ADUser -Filter 'Description -like $Desc') {
+        if (Get-ADUser -Filter 'Description -like $Desc' -Server "IL-HADC.esi.local") {
             Write-Host "$Desc already exists defaulting to Z."
             $Desc = ''
             $tempDesc = $Firstname + ' ' + 'Z' + ' ' + $Lastname	
-            $tempDesc.split(' ') | ForEach-Object {$Desc += $_[0]}
+            $tempDesc.split(' ') | ForEach-Object { $Desc += $_[0] }
             $Desc = $Desc.ToUpper()
         }
     }
 
-    #Hashtable for User params
+    #Hashtable for new user
     $NUparams = @{
-        Server            = "" 
+        Server            = "IL-HADC.esi.local" 
         SamAccountName    = $Username 
-        UserPrincipalName = "$Username@" 
+        UserPrincipalName = "$Username@engsys.net" 
         Name              = $Name 
         GivenName         = $Firstname 
         Initials          = $MI 
         Surname           = $Lastname 
         DisplayName       = $Name 
-        Description       = $Desc 
-        EmailAddress      = "$Username@" 
+        Description       = $Desc
+        EmailAddress      = "$Username@engsys.com" 
         Title             = $JobTitle 
         Department        = $Department 
         Company           = $User.Company 
@@ -77,8 +87,8 @@ function createUser([String]$Firstname,
         Path              = $User.OU 
         AccountPassword   = (convertto-securestring $Password -AsPlainText -Force) 
     }
-
-    #Set Users
+    
+    
     New-ADUser @NUparams
 		
     $Groups = @($User.Group1, $User.Group2)
@@ -93,8 +103,8 @@ function createUser([String]$Firstname,
         Write-Warning "Could not add $Username membership."
         Start-Sleep 1
     }
-		
-    Write-Output "$Username creation successful."
+        
+    Write-Output "$Username creation successful in esi.local."
     Start-Sleep 1
     Return
 }	
